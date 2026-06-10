@@ -101,19 +101,22 @@ MOON_RADIUS_KM = 1737.4
 EARTH_RADIUS_M = EARTH_RADIUS_KM * KM_TO_M
 MOON_RADIUS_M = MOON_RADIUS_KM * KM_TO_M
 
-# Optional scene-unit downscale. SCENE_UNIT_M is the number of metres one 3D
-# scene unit represents; default 1.0 keeps the scene in metres (status quo).
-# Pass `--scene-unit-m 1e6` to work in megameters: the trajectory spans ~500
-# units instead of 5e8 metres, which keeps Float32 vertex/depth math well-
-# conditioned and lets Foxglove's worldUnits-mode line/frustum rendering
-# behave (the workaround in CAMERA_MARKER_LINE_WIDTH_PX exists precisely
-# because that path breaks at metre-scale orbital coordinates). Set in
-# main() from the CLI; every coordinate that crosses into a 3D channel is
-# routed through `_to_units` so the conversion is centralised.
+# Scene-unit downscale. SCENE_UNIT_M is the number of metres one 3D scene unit
+# represents. The default is megameters (1e6): the trajectory spans ~500 units
+# instead of 5e8 metres, which keeps Float32 vertex/depth math well-conditioned
+# and lets Foxglove's worldUnits-mode line/frustum rendering behave (the
+# workaround in CAMERA_MARKER_LINE_WIDTH_PX exists precisely because that path
+# breaks at metre-scale orbital coordinates).
+#
+# Pass `--mission-scale` (equivalently `--scene-unit-m 1.0`) to keep the scene
+# in real metres — the original "mission scale" build. Set in main() from the
+# CLI; every coordinate that crosses into a 3D channel is routed through
+# `_to_units` so the conversion is centralised.
 #
 # Plot/state values (`/orion/state.distance_earth_km`, etc.) are *not*
 # scaled — those stay in real km for human-readable axes.
-SCENE_UNIT_M: float = 1.0
+DEFAULT_SCENE_UNIT_M: float = 1e6
+SCENE_UNIT_M: float = DEFAULT_SCENE_UNIT_M
 
 
 def _to_units(meters: float) -> float:
@@ -122,14 +125,31 @@ def _to_units(meters: float) -> float:
 
 
 def _scaled_default_output(scene_unit_m: float) -> Path:
-    """Pick an output filename that reflects the scene scale, so a 1.0
-    build and a megameter build can sit side-by-side without clobbering
-    each other."""
-    if scene_unit_m == 1.0:
+    """Pick an output filename that reflects the scene scale, so the default
+    megameter build and an opt-in mission-scale build can sit side-by-side
+    without clobbering each other. The default scale gets the canonical
+    `artemis-ii.mcap`; everything else is suffixed."""
+    if scene_unit_m == DEFAULT_SCENE_UNIT_M:
         return ROOT / "output" / "artemis-ii.mcap"
+    if scene_unit_m == 1.0:
+        return ROOT / "output" / "artemis-ii-mission.mcap"
     pretty = {1e3: "km", 1e6: "Mm", 1e9: "Gm"}.get(scene_unit_m)
     suffix = pretty or f"unit{scene_unit_m:g}m"
     return ROOT / "output" / f"artemis-ii-{suffix}.mcap"
+
+
+def _layout_name_for_scale(scene_unit_m: float) -> str:
+    """Name of the layout JSON that matches this scene scale. The default
+    megameter build pairs with the canonical `layout/artemis-ii.json`; the
+    mission-scale build pairs with the hand-edited `artemis-ii-mission.json`
+    baseline. Other factors expect a `rescale_layout.py`-generated variant."""
+    if scene_unit_m == DEFAULT_SCENE_UNIT_M:
+        return "layout/artemis-ii.json"
+    if scene_unit_m == 1.0:
+        return "layout/artemis-ii-mission.json"
+    pretty = {1e3: "km", 1e6: "Mm", 1e9: "Gm"}.get(scene_unit_m)
+    suffix = pretty or f"unit{scene_unit_m:g}m"
+    return f"layout/artemis-ii-{suffix}.json"
 
 # Mission window (UTC). Anything outside this window is discarded.
 #
@@ -1858,18 +1878,27 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=None,
                         help=("MCAP path. Defaults to output/artemis-ii.mcap "
-                              "or output/artemis-ii-<unit>.mcap when "
-                              "--scene-unit-m != 1.0 (e.g. -Mm for 1e6)."))
-    parser.add_argument("--scene-unit-m", type=float, default=1.0,
+                              "for the default megameter build, "
+                              "output/artemis-ii-mission.mcap with "
+                              "--mission-scale, or output/artemis-ii-<unit>.mcap "
+                              "for other --scene-unit-m factors."))
+    parser.add_argument("--scene-unit-m", type=float, default=DEFAULT_SCENE_UNIT_M,
                         metavar="METRES_PER_UNIT",
                         help=("Number of metres one 3D scene unit represents. "
-                              "Default 1.0 (status quo: scene in metres). Pass "
-                              "1e6 to work in megameters — every 3D-channel "
+                              "Default 1e6 (megameters): every 3D-channel "
                               "spatial value (TFs, sphere sizes, frustum, URDF "
                               "<mesh scale>/<origin xyz>/<box size>) is divided "
                               "by this factor, while plot/state values stay in "
-                              "real km. Use this to avoid the Float32 precision "
-                              "wall at orbital scale."))
+                              "real km. This avoids the Float32 precision wall "
+                              "at orbital scale. Pass 1.0 (or --mission-scale) "
+                              "for the original metre-scale build."))
+    parser.add_argument("--mission-scale", action="store_true",
+                        help=("Build at the original 'mission scale' (scene in "
+                              "real metres, i.e. --scene-unit-m 1.0). Pairs with "
+                              "layout/artemis-ii-mission.json. Note: Foxglove's "
+                              "worldUnits line/frustum rendering degrades at "
+                              "metre-orbital coordinates — the megameter default "
+                              "exists to avoid that."))
     parser.add_argument("--no-photos", action="store_true",
                         help="Skip photo embedding (trajectory only)")
     parser.add_argument("--include-disabled-photos", action="store_true",
@@ -1893,6 +1922,13 @@ def main() -> int:
     if args.scene_unit_m <= 0:
         print("ERROR: --scene-unit-m must be positive", file=sys.stderr)
         return 1
+    if args.mission_scale:
+        if args.scene_unit_m != DEFAULT_SCENE_UNIT_M and args.scene_unit_m != 1.0:
+            print("ERROR: --mission-scale conflicts with "
+                  f"--scene-unit-m {args.scene_unit_m:g} (mission scale is "
+                  "--scene-unit-m 1.0).", file=sys.stderr)
+            return 1
+        args.scene_unit_m = 1.0
     global SCENE_UNIT_M
     SCENE_UNIT_M = args.scene_unit_m
     if args.output is None:
@@ -1943,7 +1979,9 @@ def main() -> int:
             "liftoff_utc": LIFTOFF_UTC.isoformat(),
             "splashdown_utc": SPLASHDOWN_UTC.isoformat(),
             "ref_frame": "J2000 / ICRF (Earth-centered)",
-            "units_3d": "meters (Foxglove convention)",
+            "units_3d": ("meters (Foxglove convention)" if SCENE_UNIT_M == 1.0
+                         else f"scene units of {SCENE_UNIT_M:g} m "
+                              f"(1 unit = {SCENE_UNIT_M:g} m)"),
             "units_state": "kilometers / km/s (human-readable plots)",
             "source_trajectory": "JPL Horizons (-1024 vs 399/301)",
             "source_photos": "hankmt/Artemis-Timeline + NASA Flickr",
@@ -2039,13 +2077,13 @@ def main() -> int:
             print(f"[build]   /events: {n_logs} photo log entries")
 
     print(f"[build] done → {args.output}")
-    if SCENE_UNIT_M == 1.0:
-        print(f"[build] Open the MCAP in Foxglove and import layout/artemis-ii.json")
+    layout_name = _layout_name_for_scale(SCENE_UNIT_M)
+    if SCENE_UNIT_M in (DEFAULT_SCENE_UNIT_M, 1.0):
+        print(f"[build] Open the MCAP in Foxglove and import {layout_name}")
     else:
-        print(f"[build] Open the MCAP in Foxglove. NOTE: layout/artemis-ii.json's "
-              f"cameraState.distance / near / far / axisSize / arrowScale and "
-              f"the calibration topic distance/width are still authored in "
-              f"metre units; divide them by {SCENE_UNIT_M:g} for this build.")
+        print(f"[build] Open the MCAP in Foxglove and import {layout_name} "
+              f"(generate it with scripts/rescale_layout.py --factor "
+              f"{SCENE_UNIT_M:g} if it doesn't exist yet).")
     return 0
 
 

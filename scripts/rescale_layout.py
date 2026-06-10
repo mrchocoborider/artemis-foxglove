@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Derive a scene-unit-rescaled Foxglove layout from the canonical
-`layout/artemis-ii.json` baseline.
+Derive a scene-unit-rescaled Foxglove layout from the hand-edited
+metre-scale baseline, `layout/artemis-ii-mission.json`.
 
 `build_mcap.py --scene-unit-m K` divides every distance-flavoured value
 that crosses into a 3D channel by K. For Foxglove to render the scaled
@@ -11,6 +11,11 @@ same K — otherwise the camera starts ~120 Mm away from a scene whose
 geometry now lives inside a ±500-unit box, frustum widths overshoot
 their topics' scenes, etc.
 
+The default factor (1e6 / megameters) regenerates `layout/artemis-ii.json`
+— the canonical layout that ships with the default build. The metre-scale
+baseline (`artemis-ii-mission.json`) stays the editing source of truth:
+edit it, then re-run this script to regenerate the default Mm layout.
+
 This is a curated traversal: only the keys we know are world-unit
 flavoured are rescaled. Everything else (per-pixel line widths,
 quaternions/colors/RPY, point-size hints, panel splits, indicator
@@ -19,7 +24,7 @@ byte-identical to a hand edit but won't drift if we re-rescale after
 the baseline moves.
 
 Usage:
-    scripts/rescale_layout.py                       # 1e6, default I/O
+    scripts/rescale_layout.py                       # 1e6 → layout/artemis-ii.json
     scripts/rescale_layout.py --factor 1e3          # km variant
     scripts/rescale_layout.py --input … --output …  # custom paths
 """
@@ -34,7 +39,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_INPUT = ROOT / "layout" / "artemis-ii.json"
+DEFAULT_INPUT = ROOT / "layout" / "artemis-ii-mission.json"
+DEFAULT_FACTOR = 1e6
 
 
 # After the proportional rescale, force these layout keys to specific physical
@@ -156,15 +162,17 @@ def _apply_physical_overrides(layout: dict, k: float) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", type=Path, default=DEFAULT_INPUT,
-                   help="Baseline layout to rescale (default: layout/artemis-ii.json).")
-    p.add_argument("--factor", type=float, default=1e6, metavar="K",
+                   help="Metre-scale baseline layout to rescale (default: "
+                        "layout/artemis-ii-mission.json).")
+    p.add_argument("--factor", type=float, default=DEFAULT_FACTOR, metavar="K",
                    help="Divide every distance-flavoured value by K. Should "
                         "match the value passed to "
                         "`build_mcap.py --scene-unit-m`. Default 1e6.")
     p.add_argument("--output", type=Path, default=None,
-                   help=("Output layout path. Defaults to "
+                   help=("Output layout path. Defaults to layout/artemis-ii.json "
+                         "for the default factor (1e6), otherwise "
                          "layout/artemis-ii-<suffix>.json where <suffix> is "
-                         "km/Mm/Gm or unit<K>m."))
+                         "km/Gm or unit<K>m."))
     args = p.parse_args()
 
     if args.factor <= 0:
@@ -176,7 +184,10 @@ def main() -> int:
         return 1
 
     if args.output is None:
-        args.output = ROOT / "layout" / f"artemis-ii-{_suffix_for(args.factor)}.json"
+        if args.factor == DEFAULT_FACTOR:
+            args.output = ROOT / "layout" / "artemis-ii.json"
+        else:
+            args.output = ROOT / "layout" / f"artemis-ii-{_suffix_for(args.factor)}.json"
 
     layout = json.loads(args.input.read_text())
     rescaled = rescale(layout, args.factor)

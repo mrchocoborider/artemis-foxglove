@@ -79,6 +79,34 @@ python scripts/build_mcap.py
 # Result: output/artemis-ii.mcap (open in Foxglove, then File > Import Layout)
 ```
 
+### Scene scale
+
+By default the build runs in **megameters** (1 scene unit = 1e6 m). The
+trajectory then spans ~500 units instead of ~5e8 metres, which keeps WebGL
+Float32 vertex/depth math well-conditioned and lets Foxglove's worldUnits-mode
+line and frustum rendering behave. The default `output/artemis-ii.mcap` pairs
+with `layout/artemis-ii.json`.
+
+To build the original **mission scale** (scene in real metres), pass
+`--mission-scale`:
+
+```bash
+python scripts/build_mcap.py --mission-scale
+# → output/artemis-ii-mission.mcap, open with layout/artemis-ii-mission.json
+```
+
+`layout/artemis-ii-mission.json` is the hand-edited metre-scale baseline;
+`layout/artemis-ii.json` (the default Mm layout) is generated from it by
+`scripts/rescale_layout.py`. If you tweak the mission-scale layout, re-run that
+script to regenerate the default:
+
+```bash
+python scripts/rescale_layout.py            # → layout/artemis-ii.json (÷1e6)
+```
+
+(`--scene-unit-m K` / `rescale_layout.py --factor K` produce other scales, e.g.
+`1e3` for kilometers.)
+
 The full mission is ~10 days at 1-minute trajectory sampling and ~hundreds of
 photos. End-to-end build typically takes 10–30 minutes depending on your
 connection (photos dominate).
@@ -92,11 +120,13 @@ artemis-foxglove/
 ├── scripts/
 │   ├── fetch_horizons.py    JPL Horizons → data/horizons_earth.parquet
 │   ├── fetch_photos.py      photos.js + R2 photos → data/photos_meta.json + data/web/*.jpg
-│   └── build_mcap.py        Both → output/artemis-ii.mcap
+│   ├── build_mcap.py        Both → output/artemis-ii.mcap (Mm scale by default)
+│   └── rescale_layout.py    artemis-ii-mission.json → artemis-ii.json (÷ scene unit)
 ├── data/                    intermediate artifacts (gitignored)
 ├── output/                  generated MCAPs (gitignored)
 └── layout/
-    └── artemis-ii.json      Foxglove layout
+    ├── artemis-ii.json          default Mm-scale layout (generated)
+    └── artemis-ii-mission.json  hand-edited metre-scale baseline
 ```
 
 ## Notes on the data
