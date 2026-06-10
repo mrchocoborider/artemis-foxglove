@@ -11,46 +11,62 @@ trajectory data is publicly available NASA / public-domain content.
 
 ## What you get
 
-When you open the generated MCAP in Foxglove with the included layout:
+When you open the generated MCAP with the included layout, you get a **tabbed
+workspace** (Visuals / Data) with a custom **Photo Stepper** panel docked
+underneath.
 
-- **3D panel** — Earth, Moon, and Orion plotted in J2000 ECI, with a polyline
-trail of the spacecraft's full trajectory. Orion is positioned via a
-`FrameTransform` so it moves as you scrub the timeline.
-- **Image panel** — one always-on panel showing whichever photo is current.
-All photos (Nikon D5, GoPro, iPhone, exterior, crew, ground) are
-multiplexed onto a single `/camera/all/image` topic in chronological
-order so the panel never sits empty waiting for that specific camera's
-next shot. Per-image `frame_id` still names the source camera, and each
-on-Orion camera continues to publish a `CameraCalibration` so the 3D
-panel renders frustums per camera bolted to the spacecraft.
-- **Plot panel** — distance from Earth, distance from Moon, and speed over the
-full mission (in km / km/s).
-- **Indicator** — current mission phase (Launch / Outbound / Lunar Flyby /
-Return Coast / EDL) and the official mission elapsed time.
-- **State Transitions** — a horizontal Gantt-style strip of `/orion/phase`
-and `/milestones`, so the timeline reads as colored bands of "where in the
-mission are we right now?".
-- **Log panel** — `/events`: now one entry per photo (camera, photographer,
-caption, location). Click an entry to seek the player to that photo's
-capture time — handy for stepping through the album without waiting for
-real-time playback.
-- **Raw Messages** — live readout of the current photo's metadata.
+**Visuals tab**
+
+- **3D panel** — Earth, Moon, and Orion in J2000 ECI. The spacecraft is the
+AROW mesh (a URDF parented to the `orion` frame via a `/tf` `earth → orion`
+transform), so it moves as you scrub the timeline. An orange polyline
+(`/orion/trail`) shows the full mission arc, a star field
+(`/scene/stars`) backdrops the scene, and a single camera frustum marks
+where the current on-Orion photo was taken.
+- **Image panel** — the current photo. Every photo (Nikon D5, GoPro, iPhone,
+exterior, crew, ground) is multiplexed onto one `/camera/all/image` topic in
+chronological order, so the panel never sits empty waiting for a specific
+camera's next shot.
+
+**Data tab**
+
+- **Plot panel** — distance from Earth and distance from Moon over the full
+mission (km), read from `/orion/state`.
+- **State Transitions** — a Gantt-style strip of crew activity
+(`/orion/activity.label`): sleep / exercise / science / piloting / suit-ops /
+observation / reentry-prep bands, transcribed from the NASA Artemis II
+timeline.
+- **Indicator** — the latest mission milestone (`/milestones.name`), held
+until the next one fires: Pre-launch → LIFTOFF → MECO + STAGE SEP → TLI →
+Lunar flyby → Apogee → Entry interface → Splashdown.
+
+**Photo Stepper** (custom extension in `extension/`) — step through the photos
+one at a time or run a slideshow; each step seeks the player so the 3D panel,
+plots, and image all snap to that photo's capture time. Forward/back (`→`/`j`,
+`←`/`k`), play/pause (`Space`), first/last (`Home`/`End`), an adjustable
+slideshow interval, a per-camera filter, and a metadata readout (filename,
+camera, caption, full-res URL, UTC, "N of M"). It subscribes to `/photo/meta`.
+
+The build also writes an `/events` Log topic (one entry per photo); it isn't in
+the default layout, but you can add a Log panel bound to it to click-to-seek
+through the album.
 
 ## Pipeline
 
 ```
-       JPL Horizons API                 hankmt/Artemis-Timeline                Cloudflare R2
-   (target -1024, ctr 399/301)              photos.js                       artemistimeline.com/web
-            │                                  │                                    │
-            ▼                                  ▼                                    ▼
-  fetch_horizons.py                    fetch_photos.py  ◄──── downloads & resizes photos
-            │                                  │
-            └────────────────┬─────────────────┘
-                             ▼
-                      build_mcap.py
-                             │
-                             ▼
-                output/artemis-ii.mcap   ←── open in Foxglove with layout/artemis-ii.json
+   JPL Horizons API            hankmt/Artemis-Timeline                 Cloudflare R2
+ (target -1024,             photos.js + activity timeline           artemistimeline.com/web
+  ctr 399/301)                    │            │                            │
+       │                          ▼            ▼                            ▼
+       ▼                   fetch_photos.py  fetch_schedule.py   ◄── downloads & resizes
+ fetch_horizons.py                │            │                    photos
+       │                          │            │
+       └───────────────┬──────────┴────────────┘
+                        ▼
+                  build_mcap.py
+                        │
+                        ▼
+            output/artemis-ii.mcap   ←── open in Foxglove with layout/artemis-ii.json
 ```
 
 ## Setup
@@ -73,11 +89,19 @@ python scripts/fetch_horizons.py
 # 2. Photos: metadata + downsampled JPEGs (~1280px longest edge)
 python scripts/fetch_photos.py
 
-# 3. Build the MCAP
+# 3. Crew activity timeline (drives the State Transitions strip)
+python scripts/fetch_schedule.py
+
+# 4. Build the MCAP
 python scripts/build_mcap.py
 
 # Result: output/artemis-ii.mcap (open in Foxglove, then File > Import Layout)
 ```
+
+`scripts/fetch_attitude.py` also exists — it scrapes Orion attitude quaternions
+from archived AROW telemetry into `data/attitude.json` — but the build does not
+consume it yet (the `earth → orion` transform still logs an identity
+quaternion; see the Attitude note below).
 
 ### Scene scale
 
@@ -118,10 +142,17 @@ artemis-foxglove/
 ├── README.md                this file
 ├── requirements.txt         Python deps
 ├── scripts/
-│   ├── fetch_horizons.py    JPL Horizons → data/horizons_earth.parquet
+│   ├── fetch_horizons.py    JPL Horizons → data/horizons_{earth,moon}.csv
 │   ├── fetch_photos.py      photos.js + R2 photos → data/photos_meta.json + data/web/*.jpg
-│   ├── build_mcap.py        Both → output/artemis-ii.mcap (Mm scale by default)
+│   ├── fetch_schedule.py    activity timeline → data/schedule.json
+│   ├── fetch_attitude.py    archived AROW telemetry → data/attitude.json (not yet wired in)
+│   ├── build_mcap.py        all of the above → output/artemis-ii.mcap (Mm scale by default)
 │   └── rescale_layout.py    artemis-ii-mission.json → artemis-ii.json (÷ scene unit)
+├── models/
+│   ├── orion.urdf               AROW glb mesh URDF (default)
+│   ├── orion.glb                vendored AROW mesh
+│   └── orion-primitives.urdf    primitives-only fallback URDF
+├── extension/               Photo Stepper Foxglove panel (TypeScript)
 ├── data/                    intermediate artifacts (gitignored)
 ├── output/                  generated MCAPs (gitignored)
 └── layout/
@@ -136,110 +167,128 @@ The build script normalizes everything to UTC nanoseconds before writing to
 MCAP. Photos are also clamped to a mission window (configurable in
 `build_mcap.py`) and respect Hank's `enabled` flag.
 
-**Mission start time.** `MISSION_WINDOW_START` is pinned to **2026-04-02
-02:00 UTC** — the first row of the JPL Horizons SPK. That's about 3.5 hours
-post-liftoff (Horizons doesn't track the boost phase). Foxglove always opens
-a file at `message_start_time`, so this is the earliest moment the 3D and
-plot panels actually have data. Anything earlier (pre-launch ground photos,
-the LIFTOFF / MECO events, the first few crew snaps) is filtered out so the
-file doesn't open in a dead zone. The trade-off: if you want the launch
-sequence in the file, drop `MISSION_WINDOW_START` back to ~22:00 UTC on
-04-01 and accept that the first ~4 hours of the timeline will only have
-photos to look at.
+**Mission window.** The build keeps everything between `MISSION_WINDOW_START`
+(**2026-04-01 17:00 UTC**, ~5.5 h before the 22:35:25 UTC liftoff) and
+`MISSION_WINDOW_END` (**2026-04-11 22:00 UTC**, ~22 h after the 00:07:27 UTC
+splashdown). The window is deliberately wider than the Horizons ephemeris so it
+captures Hank's pre-launch and recovery photos (suit-up, walkout, liftoff, and
+the post-splashdown hours), none of which are in the trajectory file.
+
+The file opens at `MISSION_WINDOW_START`, but JPL Horizons only starts tracking
+~3.5 h post-liftoff (its first row is ~2026-04-02 02:00 UTC; it doesn't model
+the boost phase). To keep the 3D panel from opening empty, `write_pre_horizons_anchor()`
+parks Orion at the first Horizons position with a one-shot `earth → orion`
+transform, so pre-launch on-Orion photos have somewhere to project and the
+timeline transitions smoothly into real ephemeris once Horizons takes over.
+This is a stylization — Orion is actually still on the pad during that window.
 
 **Frame.** Trajectory is in J2000 / ICRF (NASA's "Mean of J2000" inertial
-frame, effectively fixed to distant quasars). Earth-centered for the bulk of
-the visualization, with Moon-centered ephemeris available as a sub-frame
-during the flyby.
+frame, effectively fixed to distant quasars). `earth` is the root frame;
+`moon` and `orion` are child frames positioned from Horizons via `/tf`
+(`earth → moon`, `earth → orion`), and a single `camera` frame hangs off
+`orion` for the photo frustum. The trajectory, plots, and state are all
+Earth-relative.
 
-**Units.** Foxglove's 3D panel uses **meters** for all positions, sphere
-sizes, frame translations, and camera distances. Horizons returns km; the
-build script multiplies by 1000 only at the boundaries that feed the 3D /
-TF channels. JSON state messages (`/orion/state`) stay in km/km/s so the
-plot panel reads naturally. If you tweak the layout's camera or grid size,
-remember those are in meters: Earth radius is 6,378,137 m, the Moon orbits
-at ~3.84 × 10⁸ m, and Orion's apogee is ~4.3 × 10⁸ m.
+**Units.** Internally the build authors every 3D quantity (positions, sphere
+sizes, frame translations, camera distances) in **meters** — Horizons returns
+km, so it multiplies by 1000 at the boundaries that feed the 3D / TF channels.
+It then divides everything that crosses into a 3D channel by the scene unit (see
+[Scene scale](#scene-scale)); at the **megameter** default that means the scene
+is expressed in units of 1e6 m. JSON state messages (`/orion/state`) are *not*
+scaled — they stay in km / km/s so the plot panel reads naturally.
 
-The 3D panel handles this scale just fine — WebGL Float32 has ~30 m of
-precision out at lunar distance, and with `near=1000, far=5e9` the depth
-buffer leaves ~400 m of resolution at the far end (no z-fighting between
-any of our primitives). The 500 m limit you may be remembering is the Map
-panel, which uses lat/lon and is unrelated.
+So the values you see in the default `layout/artemis-ii.json` are in megameters:
+Earth's radius is ~6.378 units, the Moon orbits at ~384 units, Orion's apogee is
+~413 units, and the 3D panel's `near`/`far` are `0.001` / `5000`. (In the
+metre-scale `artemis-ii-mission.json` baseline the same values are ×1e6 — Earth
+radius 6,378,137 m, `near` 1000, `far` 5e9.) The megameter default keeps WebGL's
+Float32 vertex/depth math well-conditioned across the whole ±500-unit trajectory;
+the metre baseline is where that math (and Foxglove's worldUnits line/frustum
+rendering) starts to break down at orbital distance.
 
 **3D panel: display frame + follow mode.** The included layout sets:
 
 ```
 followTf:    "orion"
 followMode:  "follow-position"
-distance:    30,000 km from Orion
+distance:    ~120 units (~120,000 km from Orion, in the default Mm layout)
 ```
 
 …which centers the spacecraft and lets Earth, the Moon, and the trajectory
 trail flow past as the timeline advances. `follow-position` (instead of
 `follow-pose`) keeps your camera orientation fixed as you scrub — useful
-since Orion has no real attitude data yet (see SPICE note below).
+since Orion has no real attitude data yet (see Attitude note below).
 
-The 30,000 km default is chosen so the stylized spacecraft fills a healthy
-fraction of the frame (it's a ~20 Mm-wide map icon — see the URDF section
-below). You will need to zoom out to see Earth + the full trajectory at the
-same time. If you'd rather watch the whole mission from a fixed Earth
-viewpoint, set `followTf: "earth"` and `followMode: "follow-none"`, and bump
-`distance` up to ~600,000,000 m so the Moon's orbit fits in frame.
+That distance is chosen so the stylized spacecraft reads at a comfortable size
+(it's a ~20 Mm-wide map icon — see the URDF section below) while still showing a
+good chunk of the trajectory. Zoom out to see Earth + the full arc at once. If
+you'd rather watch the whole mission from a fixed Earth viewpoint, set
+`followTf: "earth"`, `followMode: "follow-none"`, and bump `distance` up to
+~600 units (~600 Mm) so the Moon's orbit fits in frame.
 
-The orange line you see is the entire 9-day trajectory, logged once at
-mission start as a single polyline in the `earth` frame. It's not "where
-Orion has been" — it's the full pre-computed arc, so you can see where
-it's headed too. The arrow at the spacecraft's current position is what
-moves along it (matches the artemistimeline.com viewer).
+The orange line is the entire ~9-day trajectory, logged once at mission start as
+a single polyline in the `earth` frame. It's not "where Orion has been" — it's
+the full pre-computed arc, so you can see where it's headed too. The position
+that tracks along it is the URDF spacecraft model (parented to the `orion`
+frame). A redundant orange position arrow is published on `/orion/pose` but
+ships hidden in the default layout; toggle it on if you want the
+artemistimeline.com-style marker.
 
-**Attitude (SPICE CK).** Still not available as of mid-May 2026.
-`naif.jpl.nasa.gov/pub/naif/` has no `ARTEMIS2/` directory and NAIF's policy
-is that operational kernels are typically archived 6–9 months after data
-acquisition — splashdown was only ~5 weeks ago. Realistic ETA for public
-CK (attitude) kernels is **late 2026 → mid 2027**. The SPK that Horizons
-uses internally for `-1024` already exists, but is not redistributed
-separately. `build_mcap.py` keeps a `Quaternion(0,0,0,1)` placeholder on
-the `/tf` `earth → orion` transform; the swap-in point for `spiceypy` is
-inside `write_transforms_and_state`.
+**Attitude.** As of June 2026 the build logs no real attitude: the `/tf`
+`earth → orion` transform carries a `Quaternion(0,0,0,1)` placeholder
+(`IDENTITY_QUAT`), which is why the layout uses `follow-position` rather than
+`follow-pose`. The swap-in point is inside `write_transforms_and_state`.
 
-**Photos.** Every photo is stored as a JPEG `CompressedImage` message on a
-single multiplexed topic, `/camera/all/image`, in chronological order. The
-prior layout had one image topic per camera bucket (Nikon D5 / GoPro /
-iPhone / crew / exterior / ground), which meant five Image panels each
-sitting empty until that specific camera's first shot. The unified topic
-keeps the Image panel populated continuously; per-image `frame_id` still
-names the source camera (`camera_<bucket>` for on-Orion cameras, `""` for
-ground), so frustum highlighting in the 3D panel still tracks which camera
-took the active photo. The `/camera/<bucket>/calibration` topics remain
-per-bucket because the 3D panel renders one frustum per calibration topic.
-Original-resolution images remain on Cloudflare R2 and are linked via
-`/photo/meta`; we embed a ~1280 px web copy to keep the MCAP playable. Pass
-`--include-disabled-photos` to `build_mcap.py` if you want everything Hank's
-data file exposes (including training shots).
+There are two ways to get real attitude, neither wired in yet:
 
-**Camera frustums (faked intrinsics).** None of the published photo metadata
-includes calibration data, so we synthesize plausible `CameraCalibration`
-messages per bucket — a representative resolution and a horizontal FOV
-matching each camera's optics (28° HFOV for the Nikon D5 with a 70-200mm,
-65° for the iPhone main lens, 118° for the GoPro, etc.). Each on-Orion
-camera also gets a static `orion → camera_<bucket>` transform with a
-fictitious pose chosen so the frustums spread out around the body instead
-of stacking on top of each other (see `CAMERAS` in `build_mcap.py`). Treat
-the result as illustrative — "the photo was probably from somewhere over
-here" — not as photogrammetry. The `ground` bucket (KSC tower / ascent
-tracking shots) gets no transform and no calibration: it isn't bolted to
-the spacecraft and shouldn't pretend to be. If real intrinsics or extrinsics
-ever surface, drop them into `CAMERAS` and the rig will pick them up.
+- **SPICE CK kernels** — still not on NAIF. `naif.jpl.nasa.gov/pub/naif/` has
+no `ARTEMIS2/` directory, and NAIF typically archives operational kernels
+6–9 months after acquisition (splashdown was ~2 months ago). Realistic ETA
+for public CK (attitude) kernels is **late 2026 → mid 2027**. The SPK Horizons
+uses internally for `-1024` already exists but isn't redistributed separately.
+- **Archived AROW telemetry** — `scripts/fetch_attitude.py` scrapes Orion
+attitude quaternions (plus position and rates) from AROW's live-telemetry
+endpoint as captured by the Wayback Machine, writing `data/attitude.json`.
+This is already runnable; what's missing is the `build_mcap.py` glue to
+interpolate those quaternions onto the trajectory timeline and log them
+instead of `IDENTITY_QUAT`.
 
-Note that Foxglove's 3D panel renders calibration topics as **wireframe
-frustums** only — it doesn't project the corresponding image onto the
-frustum's far face. The single Image panel handles pixel display; the 3D
-panel just shows where each camera is pointed. (If image-into-frustum is what you
-want, that'd be a feature request against the 3D panel rather than a build
-script change.) Frustums are scaled to the same Earth-radius "map icon" size
-as the URDF (~6-10 Mm cone length, set via per-topic `distance` and `width`
-in the layout) so they read clearly at the default 30,000 km zoom without
-dominating the frame.
+**Photos.** Every photo is a JPEG `CompressedImage` on a single multiplexed
+topic, `/camera/all/image`, in chronological order, so the Image panel stays
+populated continuously instead of waiting on any one camera's next shot.
+On-Orion photos are stamped with the shared `camera` `frame_id`; ground photos
+(KSC tower / ascent tracking) are frameless (`""`) since they aren't bolted to
+the spacecraft. There's one shared frustum on `/camera/all/calibration`,
+re-emitted at every photo timestamp so the 3D panel has a fresh calibration
+wherever you seek. (A handful of NASA ground JPEGs are saved landscape but are
+actually portrait; the build re-encodes those upright — see `_PHOTO_ROTATIONS_CCW`.)
+Original-resolution images stay on Cloudflare R2 and are linked via
+`/photo/meta`; we embed a ~1280 px web copy to keep the MCAP playable. Of the
+~540 entries in Hank's data file, ~480 land in the file (disabled training shots
+are skipped); pass `--include-disabled-photos` to `build_mcap.py` to keep
+everything.
+
+**Camera frustum (faked intrinsics).** None of the published photo metadata
+includes calibration data, and the real mounting poses of Hank's cameras (a mix
+of crew DSLRs, phones, GoPros, and exterior payloads) aren't published. Rather
+than fake five different rigs, the build emits **one shared frustum**: a single
+`CameraCalibration` on `/camera/all/calibration` (a generic 4032×3024 sensor at
+a 60° horizontal FOV — `CAMERA_HFOV_DEG`) attached to a single `camera` frame.
+That frame is parked ~5 Mm (`CAMERA_RADIUS_M`) out from Orion's origin and
+pointed back inward so the cone projects into open space instead of being buried
+in the URDF body. Treat it as illustrative — "the photo was taken from Orion" —
+not as photogrammetry. Ground photos get no frame and no calibration.
+
+Because the image and calibration topics share the `/camera/all/` prefix (and
+the layout points `/camera/all/image`'s `cameraInfoTopic` at the calibration
+with `planarProjectionFactor: 1`), Foxglove's 3D panel can project the current
+image onto the frustum's far plane; the dedicated Image panel shows it full-size
+either way. A second, plain-lines fallback frustum is drawn on `/camera/marker`
+(a `SceneEntity` of `LinePrimitive`s with screen-pixel line width) because
+Foxglove's native worldUnits frustum rendering produces degenerate geometry at
+orbital scene coordinates — the same Float32 wall the megameter scene scale
+exists to dodge. The frustum is ~8 Mm long (`CAMERA_MARKER_DISTANCE_M`), sized
+comparably to the URDF "map icon" so it reads at the default zoom.
 
 **URDF.** Two flavors live in `models/`:
 
@@ -264,38 +313,42 @@ external dependency. Lower fidelity but always works. Build with this by
 passing `--urdf models/orion-primitives.urdf` to `scripts/build_mcap.py`.
 
 Both are scaled up so the spacecraft is legible at the layout's default
-30,000 km camera distance. At true scale Orion is ~9 m tall — at default
+~120,000 km camera distance. At true scale Orion is ~9 m tall — at default
 zoom that's a fraction of a pixel. Rather than make the user manually zoom
-from 30,000 km down to ~50 m every time they open the file, we draw the
+from ~120,000 km down to ~50 m every time they open the file, we draw the
 spacecraft as a "map icon" sized comparably to Earth's radius. The two
-URDFs encode that scale very differently:
+URDFs encode that scale very differently (both authored in metres, then
+divided by the scene unit at build — see below):
 
-- `models/orion.urdf` (mesh) uses `<mesh scale="7000000 …"/>`. The AROW glb
-is normalized to a unit cube (native AABB ≈ 0.88 × 0.85 × 1.0 *units*,
-**not** meters), so you can't transfer multipliers between the two URDFs:
-the mesh scale is in glb-native units, and `7,000,000` produces a ~~7 Mm
-body (about Earth's radius — so the spacecraft sits comfortably alongside
-Earth without dominating it). The URDF's four primitive panel `<box>`
-visuals are dimensioned in the same final URDF metres: each panel is
-5 Mm radial × 2.5 Mm along the body axis × 50 km thick, attached at
-the SM lateral surface (~~2.1 Mm) and extending out to ~7.1 Mm — wingspan
-~14 Mm tip to tip. At build time the script reads `models/orion.glb`,
-applies the tuned SAW deployment transforms (cached processed copy at
-`data/cache/orion-deployed.glb`), then base64-embeds the result directly
-into the URDF text. Pass `--no-deploy-panels` to skip SAW deployment
-(not recommended for distributable MCAPs — the bare `orion.glb` filename
-cannot be resolved from the `/orion/urdf` topic).
+- `models/orion.urdf` (mesh) is a single `<mesh>` visual using
+`<mesh scale="7000000 …"/>`. The AROW glb is normalized to a unit cube (native
+AABB ≈ 0.88 × 0.85 × 1.0 *units*, **not** meters), so the scale is in glb-native
+units: `7,000,000` produces a ~7 Mm body (about Earth's radius — so the
+spacecraft sits comfortably alongside Earth without dominating it). The solar
+arrays aren't URDF primitives here; they're the four deployed SAWs baked into
+the glb. At build time the script reads `models/orion.glb`, applies the tuned
+per-SAW deployment transforms (`_AROW_PANEL_TRANSFORMS`, cached processed copy
+at `data/cache/orion-deployed.glb`), then base64-embeds the result directly into
+the URDF text. Pass `--no-deploy-panels` to leave the arrays folded against the
+hull (not recommended for distributable MCAPs — the bare `orion.glb` filename
+can't be resolved from the `/orion/urdf` topic).
 - `models/orion-primitives.urdf` encodes dimensions directly in metres
 (e.g. `length="3700000"` means 3.7 Mm). At those values the body is
-~6 Mm tall and the panels span ~13 Mm wingspan. Same convention as Hank's artemistimeline.com viewer and
-Foxglove's own position arrow. (For the mesh URDF the scale is applied via
-the URDF `<mesh scale="…"/>` attribute; the glb file itself is unscaled.)
-The matching `CAMERAS` table in `scripts/build_mcap.py` and the per-topic
-`distance`/`width` for frustum rendering in `layout/artemis-ii.json` are
-all dimensioned in the same scale — change one knob, change them all. The
-two visibility levers — `<mesh scale>` / `CAMERAS` offsets and the layout's
-`cameraState.distance` — trade off against each other; if you want a wider
-view of the trajectory, bump `distance` up rather than shrinking the URDF.
+~6 Mm tall and the panels span ~13 Mm wingspan. (For the mesh URDF the scale
+is applied via the URDF `<mesh scale="…"/>` attribute; the glb file itself is
+unscaled.)
+
+**Scene-unit rescale.** Both URDFs are authored in metres, but
+`_rescale_urdf_xml()` divides every distance-flavoured attribute (`<mesh
+scale>`, `<origin xyz>`, `<box size>`) by the scene unit before embedding, so
+the URDF matches the rest of the scene. In the default megameter build the
+mesh `scale="7000000"` becomes `7` and the primitive body becomes ~6 units
+(~6 Mm). The camera-rig constants in `scripts/build_mcap.py` (`CAMERA_RADIUS_M`,
+`CAMERA_MARKER_DISTANCE_M`) and the per-topic `distance`/`width` in the layout
+live in the same metres-then-rescaled scale — change one knob, change them all.
+The two visibility levers — the URDF/camera sizes and the layout's
+`cameraState.distance` — trade off against each other; for a wider view of the
+trajectory, bump `distance` up rather than shrinking the URDF.
 
 The URDF is shipped **inside the MCAP** on an `/orion/urdf` topic with
 `std_msgs/msg/String` schema, and the layout's URDF layer subscribes to it
@@ -317,14 +370,23 @@ if you ever want to confirm the upstream behavior.)
 The layout sets `meshUpAxis: "y_up"` so the standard glTF Y-up → ROS Z-up
 conversion is applied to the mesh URDF; if you replace the glb with a Z-up
 asset (some COLLADA / STL files), flip that to `z_up` or add an
-`rpy="1.5708 0 0"` to the visual's `<origin>` to compensate. The orange
-arrow on `/orion/pose` stays as a redundant always-visible position marker.
+`rpy="1.5708 0 0"` to the visual's `<origin>` to compensate. (The `/orion/pose`
+arrow is a redundant position marker, but ships hidden in the default layout.)
 
 ## Navigating the timeline
 
-The mission spans ~9 days, so 1× playback would take 9 days. Some options:
+The mission spans ~9 days, so 1× playback would take 9 days. Options, fastest
+first:
 
-1. **Drag the timeline scrubber** — fastest way to jump anywhere.
+1. **Photo Stepper** — jump photo-to-photo (or auto-advance as a slideshow).
+Each step seeks the player, so all panels follow. This is the intended way to
+tour the album. See the keyboard shortcuts under "What you get".
+2. **Drag the timeline scrubber** — jump anywhere instantly.
+3. **Play** — the layout ships a default playback speed of **60×** (`playbackConfig.speed`),
+so a real-time run still finishes in a few hours rather than nine days. Bump it
+higher in the playback controls.
+4. **Add a Log panel** bound to `/events` for click-to-seek on the headline
+milestones / per-photo entries.
 
 ## Inspiration & sources
 
