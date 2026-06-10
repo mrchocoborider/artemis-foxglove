@@ -239,19 +239,13 @@ artemistimeline.com-style marker.
 (`IDENTITY_QUAT`), which is why the layout uses `follow-position` rather than
 `follow-pose`. The swap-in point is inside `write_transforms_and_state`.
 
-There are two ways to get real attitude, neither wired in yet:
 
 - **SPICE CK kernels** — still not on NAIF. `naif.jpl.nasa.gov/pub/naif/` has
 no `ARTEMIS2/` directory, and NAIF typically archives operational kernels
 6–9 months after acquisition (splashdown was ~2 months ago). Realistic ETA
 for public CK (attitude) kernels is **late 2026 → mid 2027**. The SPK Horizons
 uses internally for `-1024` already exists but isn't redistributed separately.
-- **Archived AROW telemetry** — `scripts/fetch_attitude.py` scrapes Orion
-attitude quaternions (plus position and rates) from AROW's live-telemetry
-endpoint as captured by the Wayback Machine, writing `data/attitude.json`.
-This is already runnable; what's missing is the `build_mcap.py` glue to
-interpolate those quaternions onto the trajectory timeline and log them
-instead of `IDENTITY_QUAT`.
+
 
 **Photos.** Every photo is a JPEG `CompressedImage` on a single multiplexed
 topic, `/camera/all/image`, in chronological order, so the Image panel stays
@@ -357,15 +351,6 @@ configuration — just opens the file and the spacecraft is there. (For the
 mesh URDF, "the spacecraft is there" once the glb fetch completes —
 typically a second or two over a normal connection.)
 
-Topic name is deliberately **not** `/robot_description`: the 3D panel's URDF
-subsystem special-cases that exact name in `shouldSubscribe`, short-circuiting
-before the custom-layer subscription path. So if you publish on
-`/robot_description`, no custom URDF layer ever subscribes and the layer
-silently renders nothing — you have to manually toggle the built-in
-topic-style URDF instance to visible. Any other topic name takes the
-custom-layer branch and Just Works. (See
-`app/packages/viz/src/panels/ThreeDeeRender/renderables/urdf/Urdfs.ts:888`
-if you ever want to confirm the upstream behavior.)
 
 The layout sets `meshUpAxis: "y_up"` so the standard glTF Y-up → ROS Z-up
 conversion is applied to the mesh URDF; if you replace the glb with a Z-up
@@ -382,10 +367,9 @@ first:
 Each step seeks the player, so all panels follow. This is the intended way to
 tour the album. See the keyboard shortcuts under "What you get".
 2. **Drag the timeline scrubber** — jump anywhere instantly.
-3. **Play** — the layout ships a default playback speed of **60×** (`playbackConfig.speed`),
 so a real-time run still finishes in a few hours rather than nine days. Bump it
 higher in the playback controls.
-4. **Add a Log panel** bound to `/events` for click-to-seek on the headline
+3. **Add a Log panel** bound to `/events` for click-to-seek on the headline
 milestones / per-photo entries.
 
 ## Inspiration & sources
