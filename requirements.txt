@@ -1,0 +1,8 @@
+foxglove-sdk>=0.16
+astroquery>=0.4.7
+astropy>=6.0
+Pillow>=10.0
+requests>=2.32
+numpy>=1.26
+# Optional, for future attitude work:
+# spiceypy>=6.0

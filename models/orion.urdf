@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<!--
+  Mesh-based Orion URDF. Uses the AROW-derived orion.glb vendored at
+  models/orion.glb (originally from github.com/iandees/artemis-viewer,
+  re-published from NASA's "Track NASA's Artemis II in Real Time" page,
+  AROW). Same spacecraft model NASA's official live tracker shows: detailed
+  CM, SM, engine bell, RCS thrusters, antennae, hardware, AND the four solar
+  arrays (SAW1..SAW4) deployed in their on-orbit configuration.
+
+  AROW authored the four arrays folded against the hull with no deployable
+  hinge metadata exposed in the glb. Ian Dees worked out per-array
+  position+rotation overrides interactively in his Three.js viewer's
+  panel-tuning tool; we apply those same per-node transforms at build
+  time (see _AROW_PANEL_TRANSFORMS in scripts/build_mcap.py) so the
+  AROW arrays render in their correct deployed pose. The result is a
+  fully detailed body + factory-correct deployed wings, with no synthetic
+  primitive geometry.
+
+  Body scale: 7,000,000x. AROW's glb is normalized to a unit cube (native
+  AABB ~0.88 x 0.85 x 1.0; longest axis = 1.0), so `<mesh scale>` here is
+  in "metres of final body extent" rather than "real-world meters of the
+  spacecraft". At 7,000,000 the body is about Earth-radius in extent
+  (6.4 Mm), big enough to read at our default 30,000 km camera distance.
+
+  Body axes: AROW's glb is Y-up (CM at glb +Y, SM at -Y); the layout's
+  meshUpAxis "y_up" tells the 3D panel to convert to Z-up by rotating 90°
+  around X. After that rotation: glb +Y becomes URDF +Z (CM at top), glb
+  +X stays URDF +X, and glb +Z becomes URDF -Y. The deployed SAWs end up
+  spread roughly along URDF +X/-X/+Y/-Y around the SM mid-section.
+
+  Build step: `scripts/build_mcap.py` reads models/orion.glb, applies the
+  per-SAW deployment transforms, and substitutes the mesh filename below
+  with a base64 `data:model/gltf-binary;base64,...` payload. The MCAP is
+  then fully self-contained and Foxglove does not fetch anything at runtime.
+  A processed copy is also written to data/cache/orion-deployed.glb for
+  inspection.
+
+  To skip SAW deployment (arrays stay folded against the hull): pass the
+  no_deploy_panels flag to scripts/build_mcap.py. To skip the mesh entirely:
+  build with urdf=models/orion-primitives.urdf.
+
+  XML caveat: avoid the literal "double hyphen" sequence anywhere in
+  this comment block. XML 1.0 forbids it inside an XML comment and the
+  URDF parser silently rejects the file with "No robot found in URDF".
+
+  Attribution: NASA's AROW assets are covered by the NASA Images and
+  Media Usage Guidelines (effectively public-domain for non-commercial
+  use; see www.nasa.gov/nasa-brand-center/images-and-media/). The glb
+  itself was extracted from AROW's Unity bundle and re-hosted by Ian Dees
+  at iandees/artemis-viewer; the per-SAW deployment transforms in
+  `_AROW_PANEL_TRANSFORMS` were also tuned by him.
+-->
+<robot name="orion">
+  <link name="orion">
+    <!-- AROW spacecraft body + SAW1..SAW4 deployed. -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="orion.glb"
+              scale="7000000 7000000 7000000"/>
+      </geometry>
+    </visual>
+  </link>
+</robot>

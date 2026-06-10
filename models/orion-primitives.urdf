@@ -1,0 +1,143 @@
+<?xml version="1.0"?>
+<!--
+  Stylized Orion (Artemis II) URDF, primitives only.
+
+  *** This URDF is visually exaggerated by ~666,667x *** so the spacecraft
+  is legible at the layout's default 30,000 km camera distance. At true scale
+  Orion is ~9 m tall and ~14 m wingspan; at default zoom that's ~0.0002 of a
+  pixel. We draw the spacecraft as a "map icon" instead: ~6 Mm tall, ~13 Mm
+  wingspan — about Earth-radius for the body, ~2x Earth-radius wingspan.
+  Same convention as Hank's artemistimeline.com viewer and Foxglove's
+  position arrow. Real proportions are preserved.
+
+  Real-scale reference (the values the URDF would have at 1x scale):
+      Crew Module (CM):     ~5.0 m diameter,   ~3.3 m tall    (blunt cone)
+      Service Module (SM):  ~5.0 m diameter,   ~5.5 m tall    (cylinder)
+      Solar arrays (x4):    ~7 m x 3 m panels, ~19 m wingspan
+
+  The root link is named `orion` so Foxglove's URDF layer anchors it to the
+  same TF frame the trajectory transforms publish (`earth -> orion`). All
+  child links are pure visual primitives; no kinematic chain.
+
+  Material colors are inlined inside every `<visual>` block on purpose:
+  Foxglove's URDF parser (app/packages/den/urdf/parser.ts) does not resolve
+  top-level `<material name="X"/>` references by name. Top-level material
+  declarations get parsed and stored, but per-visual `<material name="X"/>`
+  references resolve to a material with no color (fallback applies). Inlining
+  the `<color>` element makes us explicit and parser-agnostic.
+
+  Conventions: +Z up, +X forward, +Y to port.
+-->
+<robot name="orion">
+
+  <!-- Root link: this is the `orion` frame as far as the renderer is concerned. -->
+  <link name="orion">
+    <visual>
+      <!-- Crew Module: blunt cone (URDF has no cone primitive, use a short
+           cylinder; close enough at viewing scale). Centred ~+3,700 km above
+           the orion origin so the SM hangs below. -->
+      <origin xyz="0 0 3700000" rpy="0 0 0"/>
+      <geometry><cylinder length="2200000" radius="1700000"/></geometry>
+      <material name="cm_white">
+        <color rgba="0.95 0.95 0.95 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Adapter / fairing between CM and SM -->
+  <joint name="cm_to_adapter" type="fixed">
+    <parent link="orion"/>
+    <child link="cm_sm_adapter"/>
+    <origin xyz="0 0 2300000" rpy="0 0 0"/>
+  </joint>
+  <link name="cm_sm_adapter">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder length="400000" radius="1600000"/></geometry>
+      <material name="adapter_grey">
+        <color rgba="0.30 0.30 0.32 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Service Module -->
+  <joint name="adapter_to_sm" type="fixed">
+    <parent link="cm_sm_adapter"/>
+    <child link="service_module"/>
+    <origin xyz="0 0 -2000000" rpy="0 0 0"/>
+  </joint>
+  <link name="service_module">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder length="3700000" radius="1500000"/></geometry>
+      <material name="sm_grey">
+        <color rgba="0.55 0.55 0.60 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Solar Array, +Y (port) -->
+  <joint name="sm_to_panel_py" type="fixed">
+    <parent link="service_module"/>
+    <child link="solar_panel_py"/>
+    <origin xyz="0 4000000 0" rpy="0 0 0"/>
+  </joint>
+  <link name="solar_panel_py">
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="2000000 4700000 30000"/></geometry>
+      <material name="solar_blue">
+        <color rgba="0.10 0.15 0.45 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Solar Array, -Y (starboard) -->
+  <joint name="sm_to_panel_my" type="fixed">
+    <parent link="service_module"/>
+    <child link="solar_panel_my"/>
+    <origin xyz="0 -4000000 0" rpy="0 0 0"/>
+  </joint>
+  <link name="solar_panel_my">
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="2000000 4700000 30000"/></geometry>
+      <material name="solar_blue">
+        <color rgba="0.10 0.15 0.45 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Solar Array, +X (forward) -->
+  <joint name="sm_to_panel_px" type="fixed">
+    <parent link="service_module"/>
+    <child link="solar_panel_px"/>
+    <origin xyz="4000000 0 0" rpy="0 0 0"/>
+  </joint>
+  <link name="solar_panel_px">
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="4700000 2000000 30000"/></geometry>
+      <material name="solar_blue">
+        <color rgba="0.10 0.15 0.45 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Solar Array, -X (aft) -->
+  <joint name="sm_to_panel_mx" type="fixed">
+    <parent link="service_module"/>
+    <child link="solar_panel_mx"/>
+    <origin xyz="-4000000 0 0" rpy="0 0 0"/>
+  </joint>
+  <link name="solar_panel_mx">
+    <visual>
+      <origin xyz="0 0 0"/>
+      <geometry><box size="4700000 2000000 30000"/></geometry>
+      <material name="solar_blue">
+        <color rgba="0.10 0.15 0.45 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+</robot>
