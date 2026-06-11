@@ -62,6 +62,9 @@ jspm_packages/
 # Output of 'npm pack'
 *.tgz
 
+# Packaged extension (the canonical download copy lives in ../release/)
+*.foxe
+
 # Yarn Integrity file
 .yarn-integrity
 

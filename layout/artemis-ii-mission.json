@@ -3,13 +3,13 @@
     "3D!orion3d": {
       "cameraState": {
         "perspective": true,
-        "distance": 119835063.93420172,
-        "phi": 56.25714926461285,
-        "thetaOffset": 63.330539572859195,
+        "distance": 61516381.36933396,
+        "phi": 55.17750481342414,
+        "thetaOffset": 37.84721697607878,
         "targetOffset": [
-          2302502.322186187,
-          1471392.831344735,
-          -8.632870193606547e-10
+          -87823.51324689089,
+          318312.9917423215,
+          -8.066180852001439e-10
         ],
         "target": [
           0,
@@ -23,8 +23,8 @@
           1
         ],
         "fovy": 45,
-        "near": 1000,
-        "far": 5000000000
+        "near": 1000.0,
+        "far": 5000000000.0
       },
       "followMode": "follow-position",
       "followTf": "orion",
@@ -36,7 +36,7 @@
           "enablePreloading": true,
           "visible": true,
           "lineWidth": 4,
-          "axisSize": 10000000
+          "axisSize": 10000000.0
         },
         "enableStats": false,
         "meshUpAxis": "y_up",
@@ -52,21 +52,6 @@
         "frame:orion": {
           "visible": false
         },
-        "frame:camera_crew": {
-          "visible": false
-        },
-        "frame:camera_exterior": {
-          "visible": false
-        },
-        "frame:camera_gopro": {
-          "visible": false
-        },
-        "frame:camera_iphone": {
-          "visible": false
-        },
-        "frame:camera_nikon_d5": {
-          "visible": false
-        },
         "frame:camera": {
           "visible": false
         }
@@ -77,10 +62,15 @@
         },
         "/scene/stars": {
           "visible": true,
-          "pointSize": 1.5,
-          "pointShape": "square",
+          "pointSize": 1,
+          "pointShape": "circle",
           "colorMode": "flat",
-          "flatColor": "#ebe3ffff"
+          "flatColor": "#ebe3ffff",
+          "colorField": "intensity",
+          "colorMap": "turbo",
+          "stixelsEnabled": false,
+          "decayTime": 0,
+          "cubeSize": 1
         },
         "/orion/trail": {
           "visible": true
@@ -89,41 +79,11 @@
           "visible": false,
           "type": "arrow",
           "arrowScale": [
-            3000000,
-            500000,
-            500000
+            3000000.0,
+            500000.0,
+            500000.0
           ],
           "color": "#ff8800"
-        },
-        "/camera/nikon_d5/calibration": {
-          "visible": true,
-          "color": "rgba(255,193,7,0.9)",
-          "distance": 10000000,
-          "width": 200000
-        },
-        "/camera/iphone/calibration": {
-          "visible": true,
-          "color": "rgba(76,175,80,0.9)",
-          "distance": 8000000,
-          "width": 200000
-        },
-        "/camera/gopro/calibration": {
-          "visible": true,
-          "color": "rgba(33,150,243,0.9)",
-          "distance": 6000000,
-          "width": 200000
-        },
-        "/camera/crew/calibration": {
-          "visible": true,
-          "color": "rgba(244,67,54,0.9)",
-          "distance": 8000000,
-          "width": 200000
-        },
-        "/camera/exterior/calibration": {
-          "visible": true,
-          "color": "rgba(156,39,176,0.9)",
-          "distance": 10000000,
-          "width": 200000
         },
         "/camera/all/image": {
           "visible": true,
@@ -136,16 +96,16 @@
           "rectifyImage": true,
           "pointSize": 1.5,
           "syncModeEnabled": false,
-          "distance": 8000000
+          "distance": 8000000.0
         },
         "/camera/all/calibration": {
           "visible": true,
-          "distance": 80000,
-          "width": 1,
+          "distance": 8000000.0,
+          "width": 50000.0,
           "planarProjectionFactor": 1
         },
         "/camera/marker": {
-          "visible": true,
+          "visible": false,
           "color": "#fafafa21"
         }
       },
@@ -156,7 +116,7 @@
           "label": "ECI Grid (1,000,000 km)",
           "instanceId": "grid_eci",
           "layerId": "foxglove.Grid",
-          "size": 1000000000,
+          "size": 1000000000.0,
           "divisions": 10,
           "lineWidth": 1,
           "color": "#1e3a8a",
@@ -184,18 +144,17 @@
           "parameter": "",
           "framePrefix": "",
           "displayMode": "auto",
-          "fallbackColor": "#cccccc",
           "showAxis": false,
           "axisScale": 1,
           "showOutlines": true,
-          "opacity": 1,
           "controlMode": "transforms",
           "jointStatesTopic": "",
           "links": {
             "orion": {
               "visible": true
             }
-          }
+          },
+          "opacity": 1
         }
       },
       "publish": {
@@ -254,7 +213,55 @@
         "imageTopic": "/camera/all/image",
         "synchronize": true
       },
-      "synchronize": true
+      "synchronize": false
+    },
+    "Image!4a7psy7": {
+      "cameraState": {
+        "distance": 20,
+        "perspective": true,
+        "phi": 60,
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "thetaOffset": 60,
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {},
+      "layers": {},
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      },
+      "synchronize": false,
+      "imageMode": {
+        "imageTopic": "/camera/all/image",
+        "annotations": {},
+        "overlayTopics": [],
+        "rectifyImage": false
+      }
     },
     "Plot!distance": {
       "paths": [
@@ -285,76 +292,33 @@
       "sidebarDimension": 240,
       "followingViewWidth": null
     },
+    "RawMessages!1rg1neh": {
+      "defaultExpanded": false,
+      "topicPath": "/photo/meta.description",
+      "fontSize": 18
+    },
+    "RawMessages!2i8si0r": {
+      "defaultExpanded": false,
+      "topicPath": "/orion/activity.label",
+      "fontSize": 18
+    },
     "StateTransitions!milestones": {
       "paths": [
         {
           "value": "/orion/activity.label",
-          "label": "Crew activity",
-          "timestampMethod": "receiveTime"
+          "timestampMethod": "receiveTime",
+          "customStates": {
+            "type": "discrete",
+            "states": []
+          },
+          "label": "Milestones"
         }
       ],
       "isSynced": true,
       "xAxisDisplayMethod": "relative"
     },
-    "Indicator!phase": {
-      "path": "/milestones.name",
-      "style": "background",
-      "fallbackColor": "#444",
-      "fallbackLabel": "—",
-      "rules": [
-        {
-          "operator": "=",
-          "rawValue": "Pre-launch",
-          "color": "#666666",
-          "label": "PRE-LAUNCH"
-        },
-        {
-          "operator": "=",
-          "rawValue": "LIFTOFF",
-          "color": "#d32f2f",
-          "label": "LIFTOFF"
-        },
-        {
-          "operator": "=",
-          "rawValue": "MECO + STAGE SEP",
-          "color": "#e65100",
-          "label": "MECO + STAGE SEP"
-        },
-        {
-          "operator": "=",
-          "rawValue": "TLI",
-          "color": "#1976d2",
-          "label": "TRANS-LUNAR INJECTION"
-        },
-        {
-          "operator": "=",
-          "rawValue": "Lunar flyby",
-          "color": "#fbc02d",
-          "label": "LUNAR FLYBY"
-        },
-        {
-          "operator": "=",
-          "rawValue": "Apogee",
-          "color": "#7e57c2",
-          "label": "APOGEE"
-        },
-        {
-          "operator": "=",
-          "rawValue": "Entry interface",
-          "color": "#ef6c00",
-          "label": "ENTRY INTERFACE"
-        },
-        {
-          "operator": "=",
-          "rawValue": "Splashdown",
-          "color": "#388e3c",
-          "label": "SPLASHDOWN"
-        }
-      ],
-      "fontSize": 36
-    },
     "Tab!3tfapfp": {
-      "activeTabIdx": 0,
+      "activeTabIdx": 1,
       "tabs": [
         {
           "title": "Visuals",
@@ -368,20 +332,29 @@
         {
           "title": "Data",
           "layout": {
-            "first": "Plot!distance",
-            "second": {
-              "first": "StateTransitions!milestones",
-              "second": "Indicator!phase",
-              "direction": "row"
+            "first": {
+              "first": {
+                "first": "Image!4a7psy7",
+                "second": "Plot!distance",
+                "direction": "row"
+              },
+              "second": {
+                "first": "RawMessages!1rg1neh",
+                "second": "RawMessages!2i8si0r",
+                "direction": "row"
+              },
+              "direction": "column",
+              "splitPercentage": 78.06603773584906
             },
+            "second": "StateTransitions!milestones",
             "direction": "column",
-            "splitPercentage": 59.88023952095808
+            "splitPercentage": 75.31083481349911
           }
         }
       ]
     },
     "artemis-foxglove.photo-stepper!2y7z1lx": {
-      "intervalMs": 300,
+      "intervalMs": 200,
       "cameraFilter": null
     }
   },
@@ -394,6 +367,6 @@
     "first": "Tab!3tfapfp",
     "second": "artemis-foxglove.photo-stepper!2y7z1lx",
     "direction": "column",
-    "splitPercentage": 73.21428571428571
+    "splitPercentage": 68.01007556675063
   }
 }

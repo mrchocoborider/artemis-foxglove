@@ -28,17 +28,19 @@ exterior, crew, ground) is multiplexed onto one `/camera/all/image` topic in
 chronological order, so the panel never sits empty waiting for a specific
 camera's next shot.
 
-**Data tab**
+**Data tab** (the layout opens here by default)
 
+- **Image view** — a second view of the current photo (`/camera/all/image`),
+next to the plot.
 - **Plot panel** — distance from Earth and distance from Moon over the full
 mission (km), read from `/orion/state`.
+- **Raw Messages** — two live readouts: the current photo's caption
+(`/photo/meta.description`) and the current crew-activity label
+(`/orion/activity.label`).
 - **State Transitions** — a Gantt-style strip of crew activity
-(`/orion/activity.label`): sleep / exercise / science / piloting / suit-ops /
-observation / reentry-prep bands, transcribed from the NASA Artemis II
-timeline.
-- **Indicator** — the latest mission milestone (`/milestones.name`), held
-until the next one fires: Pre-launch → LIFTOFF → MECO + STAGE SEP → TLI →
-Lunar flyby → Apogee → Entry interface → Splashdown.
+(`/orion/activity.label`; the panel is titled "Milestones"): sleep / exercise /
+science / piloting / suit-ops / observation / reentry-prep bands, transcribed
+from the NASA Artemis II timeline.
 
 **Photo Stepper** (custom extension in `extension/`) — step through the photos
 one at a time or run a slideshow; each step seeks the player so the 3D panel,
@@ -47,11 +49,57 @@ plots, and image all snap to that photo's capture time. Forward/back (`→`/`j`,
 slideshow interval, a per-camera filter, and a metadata readout (filename,
 camera, caption, full-res URL, UTC, "N of M"). It subscribes to `/photo/meta`.
 
-The build also writes an `/events` Log topic (one entry per photo); it isn't in
-the default layout, but you can add a Log panel bound to it to click-to-seek
-through the album.
+The build also writes `/events` (a Log entry per photo) and `/milestones` (the
+latest mission milestone: LIFTOFF → MECO + STAGE SEP → TLI → Lunar flyby →
+Apogee → Entry interface → Splashdown). Neither is shown by the default layout,
+but you can add a Log panel on `/events` (click-to-seek) or an Indicator on
+`/milestones.name`.
 
-## Pipeline
+## Quick start — just open it
+
+No Python or Node required — download the prebuilt files from the
+[**latest GitHub Release**](https://github.com/mrchocoborider/artemis-foxglove/releases/latest):
+
+| File | What it is |
+| --- | --- |
+| `artemis-ii.mcap` | the mission recording |
+| `artemis-ii.json` | the Foxglove layout |
+| `foxgloveinternal.artemis-foxglove-0.1.0.foxe` | the Photo Stepper panel extension |
+
+1. **Open the MCAP.** In Foxglove, open `artemis-ii.mcap` (Open local file…).
+2. **Import the layout.** `File → Import Layout` and select `artemis-ii.json`.
+3. **Install the Photo Stepper extension:**
+   - **Desktop app:** drag the `.foxe` file onto the Foxglove window, or go to
+your profile icon (top right) → **Extensions** → **Install local extension**.
+   - **Web app** ([app.foxglove.dev](https://app.foxglove.dev)): profile icon
+(top right) → **Extensions** → **Install local extension**, then pick the
+`.foxe`.
+4. **Add the panel.** The imported layout already includes a **Photo Stepper**
+panel; if you're building a layout from scratch, add one from the panel picker.
+
+## Navigating the timeline
+
+The mission spans ~9 days, so 1× playback would take 9 days. Options, fastest
+first:
+
+1. **Photo Stepper** — jump photo-to-photo (or auto-advance as a slideshow).
+Each step seeks the player, so all panels follow. This is the intended way to
+tour the album. Keyboard shortcuts: `→`/`j` next, `←`/`k` previous, `Space`
+play/pause, `Home`/`End` first/last. (Click into the panel first so it has
+focus.)
+2. **Drag the timeline scrubber** — jump anywhere instantly.
+3. **Play** — the layout ships a default playback speed of **60×**
+(`playbackConfig.speed`), so a real-time run finishes in a few hours rather than
+nine days. Bump it higher in the playback controls.
+4. **Add a Log panel** bound to `/events` for click-to-seek on the headline
+milestones / per-photo entries.
+
+## Build it yourself
+
+Three fetch scripts pull the source data, then `build_mcap.py` fuses it into the
+MCAP and embeds the layout/URDF; `rescale_layout.py` derives the scaled layout.
+
+### Pipeline
 
 ```
    JPL Horizons API            hankmt/Artemis-Timeline                 Cloudflare R2
@@ -69,7 +117,7 @@ through the album.
             output/artemis-ii.mcap   ←── open in Foxglove with layout/artemis-ii.json
 ```
 
-## Setup
+### Setup
 
 Requires Python 3.10+.
 
@@ -80,7 +128,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run the pipeline
+### Run the pipeline
 
 ```bash
 # 1. Trajectory: Orion (-1024) relative to Earth (399) and Moon (301)
@@ -103,7 +151,7 @@ from archived AROW telemetry into `data/attitude.json` — but the build does no
 consume it yet (the `earth → orion` transform still logs an identity
 quaternion; see the Attitude note below).
 
-### Scene scale
+#### Scene scale
 
 By default the build runs in **megameters** (1 scene unit = 1e6 m). The
 trajectory then spans ~500 units instead of ~5e8 metres, which keeps WebGL
@@ -119,23 +167,33 @@ python scripts/build_mcap.py --mission-scale
 # → output/artemis-ii-mission.mcap, open with layout/artemis-ii-mission.json
 ```
 
-`layout/artemis-ii-mission.json` is the hand-edited metre-scale baseline;
-`layout/artemis-ii.json` (the default Mm layout) is generated from it by
-`scripts/rescale_layout.py`. If you tweak the mission-scale layout, re-run that
-script to regenerate the default:
+`layout/artemis-ii.json` (the default Mm layout) is the hand-edited **source of
+truth**. The matching metre-scale `layout/artemis-ii-mission.json` is generated
+from it by `scripts/rescale_layout.py` (every distance-flavoured value ×1e6). So
+if you tweak `artemis-ii.json`, re-run that script to regenerate the mission
+layout:
 
 ```bash
-python scripts/rescale_layout.py            # → layout/artemis-ii.json (÷1e6)
+python scripts/rescale_layout.py            # artemis-ii.json → artemis-ii-mission.json (×1e6)
 ```
-
-(`--scene-unit-m K` / `rescale_layout.py --factor K` produce other scales, e.g.
-`1e3` for kilometers.)
 
 The full mission is ~10 days at 1-minute trajectory sampling and ~hundreds of
 photos. End-to-end build typically takes 10–30 minutes depending on your
 connection (photos dominate).
 
-## File layout
+To publish a rebuild for the "just open it" path, attach the new artifacts to a
+[GitHub Release](https://github.com/mrchocoborider/artemis-foxglove/releases)
+(the big MCAP is kept out of git this way). Repackage the extension first if its
+source changed (`cd extension && npm run package`):
+
+```bash
+gh release upload <tag> \
+  output/artemis-ii.mcap \
+  layout/artemis-ii.json \
+  extension/foxgloveinternal.artemis-foxglove-0.1.0.foxe --clobber
+```
+
+### File layout
 
 ```
 artemis-foxglove/
@@ -147,7 +205,7 @@ artemis-foxglove/
 │   ├── fetch_schedule.py    activity timeline → data/schedule.json
 │   ├── fetch_attitude.py    archived AROW telemetry → data/attitude.json (not yet wired in)
 │   ├── build_mcap.py        all of the above → output/artemis-ii.mcap (Mm scale by default)
-│   └── rescale_layout.py    artemis-ii-mission.json → artemis-ii.json (÷ scene unit)
+│   └── rescale_layout.py    artemis-ii.json → artemis-ii-mission.json (×1e6)
 ├── models/
 │   ├── orion.urdf               AROW glb mesh URDF (default)
 │   ├── orion.glb                vendored AROW mesh
@@ -156,8 +214,8 @@ artemis-foxglove/
 ├── data/                    intermediate artifacts (gitignored)
 ├── output/                  generated MCAPs (gitignored)
 └── layout/
-    ├── artemis-ii.json          default Mm-scale layout (generated)
-    └── artemis-ii-mission.json  hand-edited metre-scale baseline
+    ├── artemis-ii.json          default Mm-scale layout (hand-edited source)
+    └── artemis-ii-mission.json  metre-scale layout (generated, ×1e6)
 ```
 
 ## Notes on the data
@@ -211,7 +269,7 @@ rendering) starts to break down at orbital distance.
 ```
 followTf:    "orion"
 followMode:  "follow-position"
-distance:    ~120 units (~120,000 km from Orion, in the default Mm layout)
+distance:    ~61.5 units (~61,500 km from Orion, in the default Mm layout)
 ```
 
 …which centers the spacecraft and lets Earth, the Moon, and the trajectory
@@ -277,12 +335,13 @@ Because the image and calibration topics share the `/camera/all/` prefix (and
 the layout points `/camera/all/image`'s `cameraInfoTopic` at the calibration
 with `planarProjectionFactor: 1`), Foxglove's 3D panel can project the current
 image onto the frustum's far plane; the dedicated Image panel shows it full-size
-either way. A second, plain-lines fallback frustum is drawn on `/camera/marker`
-(a `SceneEntity` of `LinePrimitive`s with screen-pixel line width) because
-Foxglove's native worldUnits frustum rendering produces degenerate geometry at
-orbital scene coordinates — the same Float32 wall the megameter scene scale
-exists to dodge. The frustum is ~8 Mm long (`CAMERA_MARKER_DISTANCE_M`), sized
-comparably to the URDF "map icon" so it reads at the default zoom.
+either way. The build also publishes a plain-lines fallback frustum on
+`/camera/marker` (a `SceneEntity` of `LinePrimitive`s with screen-pixel line
+width) for cases where Foxglove's native worldUnits frustum rendering produces
+degenerate geometry at orbital scene coordinates — the same Float32 wall the
+megameter scene scale exists to dodge. It's ~8 Mm long (`CAMERA_MARKER_DISTANCE_M`),
+sized comparably to the URDF "map icon", but ships **hidden** in the default
+layout (toggle it on if the calibration frustum ever misbehaves).
 
 **URDF.** Two flavors live in `models/`:
 
@@ -307,9 +366,9 @@ external dependency. Lower fidelity but always works. Build with this by
 passing `--urdf models/orion-primitives.urdf` to `scripts/build_mcap.py`.
 
 Both are scaled up so the spacecraft is legible at the layout's default
-~120,000 km camera distance. At true scale Orion is ~9 m tall — at default
+~61,500 km camera distance. At true scale Orion is ~9 m tall — at default
 zoom that's a fraction of a pixel. Rather than make the user manually zoom
-from ~120,000 km down to ~50 m every time they open the file, we draw the
+from ~61,500 km down to ~50 m every time they open the file, we draw the
 spacecraft as a "map icon" sized comparably to Earth's radius. The two
 URDFs encode that scale very differently (both authored in metres, then
 divided by the scene unit at build — see below):
@@ -357,20 +416,6 @@ conversion is applied to the mesh URDF; if you replace the glb with a Z-up
 asset (some COLLADA / STL files), flip that to `z_up` or add an
 `rpy="1.5708 0 0"` to the visual's `<origin>` to compensate. (The `/orion/pose`
 arrow is a redundant position marker, but ships hidden in the default layout.)
-
-## Navigating the timeline
-
-The mission spans ~9 days, so 1× playback would take 9 days. Options, fastest
-first:
-
-1. **Photo Stepper** — jump photo-to-photo (or auto-advance as a slideshow).
-Each step seeks the player, so all panels follow. This is the intended way to
-tour the album. See the keyboard shortcuts under "What you get".
-2. **Drag the timeline scrubber** — jump anywhere instantly.
-so a real-time run still finishes in a few hours rather than nine days. Bump it
-higher in the playback controls.
-3. **Add a Log panel** bound to `/events` for click-to-seek on the headline
-milestones / per-photo entries.
 
 ## Inspiration & sources
 

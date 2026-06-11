@@ -1,31 +1,26 @@
 #!/usr/bin/env python3
 """
-Derive a scene-unit-rescaled Foxglove layout from the hand-edited
-metre-scale baseline, `layout/artemis-ii-mission.json`.
+Derive the metre-scale "mission" Foxglove layout from the canonical megameter
+layout, `layout/artemis-ii.json`.
 
-`build_mcap.py --scene-unit-m K` divides every distance-flavoured value
-that crosses into a 3D channel by K. For Foxglove to render the scaled
-MCAP at the same visual scale it renders the metres MCAP, the matching
-distance-flavoured values in the layout JSON have to be divided by the
-same K — otherwise the camera starts ~120 Mm away from a scene whose
-geometry now lives inside a ±500-unit box, frustum widths overshoot
-their topics' scenes, etc.
+`layout/artemis-ii.json` is the hand-edited source of truth, authored at the
+**megameter** scene scale (1 scene unit = 1e6 m) that the default `build_mcap.py`
+build uses. The `build_mcap.py --mission-scale` build instead expresses the
+scene in real **metres** (1 unit = 1 m), so every distance-flavoured value in
+the layout has to be multiplied by 1e6 to render at the same visual scale.
+This script does exactly that, writing `layout/artemis-ii-mission.json`.
 
-The default factor (1e6 / megameters) regenerates `layout/artemis-ii.json`
-— the canonical layout that ships with the default build. The metre-scale
-baseline (`artemis-ii-mission.json`) stays the editing source of truth:
-edit it, then re-run this script to regenerate the default Mm layout.
+Workflow: edit `artemis-ii.json` (the Mm default), then re-run this script to
+regenerate the matching mission-scale layout.
 
-This is a curated traversal: only the keys we know are world-unit
-flavoured are rescaled. Everything else (per-pixel line widths,
-quaternions/colors/RPY, point-size hints, panel splits, indicator
-font-sizes, etc.) is passed through untouched. The produced layout is
-byte-identical to a hand edit but won't drift if we re-rescale after
-the baseline moves.
+It's a curated traversal: only the keys we know are world-unit flavoured are
+scaled. Everything else (per-pixel line widths, quaternions/colors/RPY,
+point-size hints, panel splits, image-panel cameraState, etc.) is passed
+through untouched.
 
 Usage:
-    scripts/rescale_layout.py                       # 1e6 → layout/artemis-ii.json
-    scripts/rescale_layout.py --factor 1e3          # km variant
+    scripts/rescale_layout.py                       # artemis-ii.json → artemis-ii-mission.json
+    scripts/rescale_layout.py --factor 1e6          # explicit (metres per source unit)
     scripts/rescale_layout.py --input … --output …  # custom paths
 """
 
@@ -39,43 +34,16 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_INPUT = ROOT / "layout" / "artemis-ii-mission.json"
+DEFAULT_INPUT = ROOT / "layout" / "artemis-ii.json"
+DEFAULT_OUTPUT = ROOT / "layout" / "artemis-ii-mission.json"
+# Metres per source (megameter) scene unit. Multiplying the Mm layout by this
+# converts it to the metre-scale mission layout.
 DEFAULT_FACTOR = 1e6
-
-
-# After the proportional rescale, force these layout keys to specific physical
-# values (expressed in metres). Use this for keys whose literal scaling
-# preserves the proportion but breaks visibility — typically line widths that
-# were set near-invisible in the metres baseline because the metres-scale
-# worldUnits rendering path was broken, but which we want readable at scaled
-# builds where the path works.
-#
-# Each entry: (panel_id_prefix, key_path_inside_panel_cfg, value_in_metres).
-_PHYSICAL_OVERRIDES_M: list[tuple[str, tuple[str, ...], float]] = [
-    # /camera/all/calibration.width — Foxglove's native frustum line width
-    # in scene units (worldUnits-mode three.js LineSegments2). The baseline
-    # has it at 1 m, deliberately subpixel because the worldUnits path
-    # silently fails at metre-orbital scale (the same precision wall that
-    # made us add the /camera/marker SceneEntity workaround). At reasonable
-    # scene-unit factors that path comes back to life, so force the line to
-    # ~50 km of physical width so it reads at any zoom level.
-    ("3D!", ("topics", "/camera/all/calibration", "width"), 50_000.0),
-    # /camera/all/calibration.distance — frustum length, kept short in the
-    # baseline (80 km) for the same reason. Match the /camera/marker
-    # SceneEntity's CAMERA_MARKER_DISTANCE_M (8 Mm) so the two visuals
-    # overlay cleanly when both render.
-    ("3D!", ("topics", "/camera/all/calibration", "distance"), 8_000_000.0),
-]
-
-
-def _suffix_for(factor: float) -> str:
-    pretty = {1e3: "km", 1e6: "Mm", 1e9: "Gm"}.get(factor)
-    return pretty or f"unit{factor:g}m"
 
 
 def _scale_number(v: Any, k: float) -> Any:
     if isinstance(v, (int, float)) and not isinstance(v, bool):
-        return v / k
+        return v * k
     return v
 
 
@@ -87,11 +55,11 @@ def _scale_list(v: Any, k: float) -> Any:
 
 def rescale(layout: dict, k: float) -> dict:
     """Return a deep copy of `layout` with every distance-flavoured value
-    divided by `k`. Touches:
+    multiplied by `k`. Touches:
 
       For each 3D panel (`configById["3D!*"]`):
         - `cameraState.distance`, `near`, `far`
-        - `cameraState.targetOffset` (array of 3 metres)
+        - `cameraState.targetOffset` (array of 3)
         - `scene.transforms.axisSize`
         - `topics[*].distance`, `topics[*].width`
         - `topics[*].arrowScale` (array of 3)
@@ -134,45 +102,19 @@ def rescale(layout: dict, k: float) -> dict:
             if layer_cfg.get("layerId") == "foxglove.Grid" and "size" in layer_cfg:
                 layer_cfg["size"] = _scale_number(layer_cfg["size"], k)
 
-    _apply_physical_overrides(out, k)
     return out
-
-
-def _apply_physical_overrides(layout: dict, k: float) -> None:
-    """Mutate `layout` in place: walk every `_PHYSICAL_OVERRIDES_M` entry
-    and assign the override (converted from metres to scene units) to the
-    matching key path. Silently skips entries whose key path doesn't
-    exist (so the override list can be a superset of any one layout)."""
-    for panel_prefix, path, metres in _PHYSICAL_OVERRIDES_M:
-        for panel_id, panel_cfg in layout.get("configById", {}).items():
-            if not isinstance(panel_cfg, dict):
-                continue
-            if not panel_id.startswith(panel_prefix):
-                continue
-            cur: Any = panel_cfg
-            for segment in path[:-1]:
-                if not isinstance(cur, dict) or segment not in cur:
-                    cur = None
-                    break
-                cur = cur[segment]
-            if isinstance(cur, dict) and path[-1] in cur:
-                cur[path[-1]] = metres / k
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", type=Path, default=DEFAULT_INPUT,
-                   help="Metre-scale baseline layout to rescale (default: "
-                        "layout/artemis-ii-mission.json).")
+                   help="Megameter source layout (default: layout/artemis-ii.json).")
     p.add_argument("--factor", type=float, default=DEFAULT_FACTOR, metavar="K",
-                   help="Divide every distance-flavoured value by K. Should "
-                        "match the value passed to "
-                        "`build_mcap.py --scene-unit-m`. Default 1e6.")
+                   help="Multiply every distance-flavoured value by K (metres "
+                        "per source scene unit). Default 1e6 (Mm → metres).")
     p.add_argument("--output", type=Path, default=None,
-                   help=("Output layout path. Defaults to layout/artemis-ii.json "
-                         "for the default factor (1e6), otherwise "
-                         "layout/artemis-ii-<suffix>.json where <suffix> is "
-                         "km/Gm or unit<K>m."))
+                   help="Output layout path. Defaults to "
+                        "layout/artemis-ii-mission.json.")
     args = p.parse_args()
 
     if args.factor <= 0:
@@ -184,15 +126,12 @@ def main() -> int:
         return 1
 
     if args.output is None:
-        if args.factor == DEFAULT_FACTOR:
-            args.output = ROOT / "layout" / "artemis-ii.json"
-        else:
-            args.output = ROOT / "layout" / f"artemis-ii-{_suffix_for(args.factor)}.json"
+        args.output = DEFAULT_OUTPUT
 
     layout = json.loads(args.input.read_text())
     rescaled = rescale(layout, args.factor)
     args.output.write_text(json.dumps(rescaled, indent=2) + "\n")
-    print(f"[rescale] {args.input.name} → {args.output} (÷ {args.factor:g})")
+    print(f"[rescale] {args.input.name} → {args.output} (× {args.factor:g})")
     return 0
 
 

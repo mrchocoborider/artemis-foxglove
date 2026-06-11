@@ -140,9 +140,9 @@ def _scaled_default_output(scene_unit_m: float) -> Path:
 
 def _layout_name_for_scale(scene_unit_m: float) -> str:
     """Name of the layout JSON that matches this scene scale. The default
-    megameter build pairs with the canonical `layout/artemis-ii.json`; the
-    mission-scale build pairs with the hand-edited `artemis-ii-mission.json`
-    baseline. Other factors expect a `rescale_layout.py`-generated variant."""
+    megameter build pairs with the hand-edited `layout/artemis-ii.json` (the
+    source of truth); the mission-scale build pairs with the generated
+    `artemis-ii-mission.json` (`rescale_layout.py`, ×1e6)."""
     if scene_unit_m == DEFAULT_SCENE_UNIT_M:
         return "layout/artemis-ii.json"
     if scene_unit_m == 1.0:
